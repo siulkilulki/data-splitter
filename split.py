@@ -134,10 +134,10 @@ def get_fields(fields_arg):
     fields = []
     for field in fields_arg.split(','):
         if not '-' in field:
-            fields.append(int(field))
+            fields.append(int(field) - 1)
         else:
             start, end = map(int, field.split('-'))
-            fields = fields + list(range(start, end + 1))
+            fields = fields + list(range(start - 1, end))
     return fields
 
 
