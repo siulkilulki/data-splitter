@@ -6,6 +6,8 @@ import sys
 import itertools
 import bisect
 import logging
+from tqdm import tqdm
+
 logging.basicConfig(level=logging.INFO)
 # MAX_NUM = 256**2 - 1  #255+255*256
 # BYTES = 3
@@ -16,51 +18,51 @@ BYTE_SIZE = 256
 
 def get_args():
     parser = argparse.ArgumentParser(
-        description='Splits data in reproducible fashion.',
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument(
-        'first_fraction',
-        metavar='fraction',
-        type=float,
-        help='Fraction or percentage of infile with will be in output file.')
-    parser.add_argument(
-        'rest_fractions', metavar='fraction', type=float, nargs='+')
-    # help=argparse.SUPPRESS)
-    parser.add_argument(
-        '-i',
-        '--input',
-        dest='infile',
-        nargs='?',
-        type=argparse.FileType('r'),
-        default=sys.stdin)
-    parser.add_argument(
-        '-f',
-        '--fields',
-        help=
-        'Fields from which to calculate hash in the same format as Linux `cut` command. e.g. -f 1,3-5 to select 1st, 3rd, 4th, 5th field.'
+        description="Splits data in reproducible fashion.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        '--with-header',
-        action='store_true',
-        dest='is_header',
-        help='Handles header. Add it into every splitted file.')
+        "first_fraction",
+        metavar="fraction",
+        type=float,
+        help="Fraction or percentage of infile with will be in output file.",
+    )
+    parser.add_argument("rest_fractions", metavar="fraction", type=float, nargs="+")
+    # help=argparse.SUPPRESS)
     parser.add_argument(
-        '-hash',
-        '--hash-function',
-        default='md5',
-        help='Hash function to be used')
+        "-i",
+        "--input",
+        dest="infile",
+        nargs="?",
+        type=argparse.FileType("r"),
+        default=sys.stdin,
+    )
     parser.add_argument(
-        '-b',
-        '--bytes-nr',
+        "-f",
+        "--fields",
+        help="Fields from which to calculate hash in the same format as Linux `cut` command. e.g. -f 1,3-5 to select 1st, 3rd, 4th, 5th field.",
+    )
+    parser.add_argument(
+        "--with-header",
+        action="store_true",
+        dest="is_header",
+        help="Handles header. Add it into every splitted file.",
+    )
+    parser.add_argument(
+        "-hash", "--hash-function", default="md5", help="Hash function to be used"
+    )
+    parser.add_argument(
+        "-b",
+        "--bytes-nr",
         default=4,
         type=int,
-        help='number of last bytes of hash (e.g md5) to consider')
+        help="number of last bytes of hash (e.g md5) to consider",
+    )
     parser.add_argument(
-        '--endian',
-        choices=['big', 'little'],
-        default='big',
-        help=
-        'Choose order of bytes. With with big endian last X bytes are choosen, with little endian first X bytes are choosen.'
+        "--endian",
+        choices=["big", "little"],
+        default="big",
+        help="Choose order of bytes. With with big endian last X bytes are choosen, with little endian first X bytes are choosen.",
     )
     parser.set_defaults(is_header=False)
     namespace = parser.parse_args()
@@ -94,7 +96,7 @@ class RangeStruct:
 
 
 def cumulative_normalized_fractions(fractions, bytes_nr):
-    max_num = BYTE_SIZE**bytes_nr - 1
+    max_num = BYTE_SIZE ** bytes_nr - 1
     fract_sum = sum(fractions)
     cum_fractions = itertools.accumulate(fractions)
     return map(lambda fract: max_num * fract / fract_sum, cum_fractions)
@@ -104,8 +106,8 @@ def get_range_struct(fractions, infile_name, bytes_nr):
     cum_fractions = cumulative_normalized_fractions(fractions, bytes_nr)
     range_dict = RangeStruct()
     for i, fract in enumerate(cum_fractions):
-        fname = f'{infile_name}.part_{i}'
-        range_dict.add(fract, open(fname, 'w'))
+        fname = f"{infile_name}.part_{i}"
+        range_dict.add(fract, open(fname, "w"))
     return range_dict
 
 
@@ -118,48 +120,59 @@ def calc_hash(string, hash_function):
 
 def append_to_file(line, range_dict, fields, hash_function, bytes_nr, endian):
     if fields:
-        row = line.rstrip('\n').split('\t')
-        to_hash = ''.join([row[i] for i in fields])
+        row = line.rstrip("\n").split("\t")
+        to_hash = "".join([row[i] for i in fields])
     else:
         to_hash = line
     hash_ = calc_hash(to_hash, hash_function)
     value = int.from_bytes(hash_[-bytes_nr:], endian)
     file_ = range_dict.get(value)
-    print(line, file=file_, end='')
+    print(line, file=file_, end="")
 
 
 def get_fields(fields_arg):
     if not fields_arg:
         return []
     fields = []
-    for field in fields_arg.split(','):
-        if not '-' in field:
+    for field in fields_arg.split(","):
+        if not "-" in field:
             fields.append(int(field) - 1)
         else:
-            start, end = map(int, field.split('-'))
+            start, end = map(int, field.split("-"))
             fields = fields + list(range(start - 1, end))
     return fields
 
 
 def main():
     args = get_args()
-    infile_name = args.infile.name.lstrip('<').rstrip('>')
+    infile_name = args.infile.name.lstrip("<").rstrip(">")
     fractions = args.fractions
     fields = get_fields(args.fields)
     range_dict = get_range_struct(fractions, infile_name, args.bytes_nr)
-    logging.info(f'''\nhash: {args.hash_function}
+    logging.info(
+        f"""\nhash: {args.hash_function}
     bytes number: {args.bytes_nr}
-    byte-order: {args.endian}''')
+    byte-order: {args.endian}"""
+    )
     if args.is_header:
         header = next(args.infile)
         for outfile in range_dict.items:
-            print(header, file=outfile, end='')
-    for line in args.infile:
-        append_to_file(line, range_dict, fields, args.hash_function,
-                       args.bytes_nr, args.endian)
+            print(header, file=outfile, end="")
+
+    total = None
+    if args.infile.seekable():
+        logging.info(f"Calculating number of lines...")
+        for total, line in enumerate(args.infile, 1):
+            pass
+        logging.info(f"Done.")
+        args.infile.seek(0)
+    for line in tqdm(args.infile, total=total):
+        append_to_file(
+            line, range_dict, fields, args.hash_function, args.bytes_nr, args.endian
+        )
     for outfile in range_dict.items:
         outfile.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
