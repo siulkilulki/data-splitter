@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="data-splitter",
-    version="0.0.3",
+    version="0.0.4",
     author="Dawid Jurkiewicz",
     author_email="dawjur@amu.edu.pl",
     description="Hash function based data splitter.",
