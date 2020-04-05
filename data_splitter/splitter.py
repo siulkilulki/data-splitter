@@ -7,6 +7,7 @@ import itertools
 import bisect
 import logging
 from tqdm import tqdm
+import gzip
 
 logging.basicConfig(level=logging.INFO)
 # MAX_NUM = 256**2 - 1  #255+255*256
@@ -28,7 +29,6 @@ def get_args():
         help="Fraction or percentage of infile with will be in output file.",
     )
     parser.add_argument("rest_fractions", metavar="fraction", type=float, nargs="+")
-    # help=argparse.SUPPRESS)
     parser.add_argument(
         "-i",
         "--input",
@@ -47,6 +47,18 @@ def get_args():
         action="store_true",
         dest="is_header",
         help="Handles header. Add it into every splitted file.",
+    )
+    parser.add_argument(
+        "--compress",
+        action="store_true",
+        dest="do_compress",
+        help="Compresses output files with gzip.",
+    )
+    parser.add_argument(
+        "--compress-level",
+        default=4,
+        type=int,
+        help="Compresses level.",
     )
     parser.add_argument(
         "-hash", "--hash-function", default="md5", help="Hash function to be used"
@@ -102,12 +114,16 @@ def cumulative_normalized_fractions(fractions, bytes_nr):
     return map(lambda fract: max_num * fract / fract_sum, cum_fractions)
 
 
-def get_range_struct(fractions, infile_name, bytes_nr):
+def get_range_struct(fractions, infile_name, bytes_nr, do_compress, compress_level):
     cum_fractions = cumulative_normalized_fractions(fractions, bytes_nr)
     range_dict = RangeStruct()
     for i, fract in enumerate(cum_fractions):
         fname = f"{infile_name}.part_{i}"
-        range_dict.add(fract, open(fname, "w"))
+        if do_compress:
+            file_ = gzip.open(f"{fname}.gz", "wt", compresslevel=compress_level)
+        else:
+            file_ = open(fname, "w")
+        range_dict.add(fract, file_)
     return range_dict
 
 
@@ -148,7 +164,7 @@ def main():
     infile_name = args.infile.name.lstrip("<").rstrip(">")
     fractions = args.fractions
     fields = get_fields(args.fields)
-    range_dict = get_range_struct(fractions, infile_name, args.bytes_nr)
+    range_dict = get_range_struct(fractions, infile_name, args.bytes_nr, args.do_compress, args.compress_level)
     logging.info(
         f"""\nhash: {args.hash_function}
     bytes number: {args.bytes_nr}
